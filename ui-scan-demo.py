@@ -16,17 +16,25 @@ if gtk.pygtk_version < (2, 14, 0):
     print "PyGtk 2.14.0 or later required"
     raise SystemExit
 
+
+# represents the current app we're scanning
+class App:
+    def __inti__(self):
+        pass
+
+
+# the UI for the scanner
 class ScannerApp:
     def __init__(self):
-        self.builder = gtk.Builder()
-        self.builder.add_from_file("ui-scan-demo.ui") # TODO check for error
-        self.mainWindow = self.builder.get_object("window") # TODO check for None
-        self.fasterButton = self.builder.get_object("faster_button")
-        self.slowerButton = self.builder.get_object("slower_button")
-        self.opacityScale = self.builder.get_object("opacity_scale")
-        self.builder.connect_signals(self)
+#        self.builder = gtk.Builder()
+#        self.builder.add_from_file("ui-scan-demo.ui") # TODO check for error
+#        self.mainWindow = self.builder.get_object("window") # TODO check for None
+#        self.fasterButton = self.builder.get_object("faster_button")
+#        self.slowerButton = self.builder.get_object("slower_button")
+#        self.opacityScale = self.builder.get_object("opacity_scale")
+#        self.builder.connect_signals(self)
 
-        self.current_delay = 1000
+        self.current_delay = 1500
         self.timer_increment = 100
         self.max_delay = 4000
         self.min_delay = 200
@@ -34,7 +42,7 @@ class ScannerApp:
 
         self.ui_index1 = self.ui_index2 = 0
 
-        self.mainWindow.show_all()
+#        self.mainWindow.show_all()
 
     def get_ooowriter_rows(self):
         desktop = pyatspi.Registry.getDesktop(0)
@@ -54,24 +62,11 @@ class ScannerApp:
 
         # if we found OOOWriter then get references to the UI that we want to scan over
         # start by getting the rows
-        self.mainRow = []
-        self.cols = []
-        self.ui = []
         if sofficeIndex >= 0 and ooowriterIndex >= 0:
             ooowriterWindowWDec = desktop.getChildAtIndex(sofficeIndex).getChildAtIndex(ooowriterIndex)
             ooowriterWindow = ooowriterWindowWDec.getChildAtIndex(0)
             assert ooowriterWindow.getRoleName() == "root pane"
-            self.mainRow = self._get_main_rows(ooowriterWindow)
-
-            self.ui.append(self.mainRow)
-
-            # get the coloums
-            self.mainCols = []
-            for r in self.mainRow:
-                tmp = self._get_sub_rows(r)
-                self.ui.append(tmp)
-
-#            self.ui.append(self.mainCols)
+            self.ui = self._get_main_rows(ooowriterWindow)
 
     def _get_main_rows(self, root):
         row = []
@@ -89,23 +84,19 @@ class ScannerApp:
         return row
 
     def _get_sub_rows(self, root):
-        row = []
+        row = [root]
         for i in range(root.childCount):
             rootItem = root.getChildAtIndex(i)
             roleName = rootItem.getRoleName()
-            if roleName != "separator":
+            states = rootItem.getState().getStates()
+            if roleName != "separator" and pyatspi.STATE_SENSITIVE in states:
                 row.append(rootItem)
         return row
 
     def highlight_next(self):
         ch = ComponentHighlighter()
-        ch.highlight(self.current_delay, self.ui[self.ui_index1][self.ui_index2])
-        self.ui_index2 = self.ui_index2 + 1;
-        if self.ui_index2 >= len(self.ui[self.ui_index1]):
-            self.ui_index2 = 0
-            self.ui_index1 = self.ui_index1 + 1;
-            if self.ui_index1 >= len(self.ui):
-                self.ui_index1 = 0
+        ch.highlight(self.current_delay, self.ui[self.ui_index1%len(self.ui)])
+        self.ui_index1 = self.ui_index1 + 1;
 
         #print "advance_to_next", self.current_delay, self.timer_id
         return True
@@ -143,6 +134,23 @@ class ScannerApp:
     def on_window_delete_event(self, widget, event):
         gobject.source_remove(self.timer_id)
         gtk.main_quit()
+        
+    def on_key_down(self, event):
+        if event.event_string == "Control_R":
+            acc = self.ui[self.ui_index1%len(self.ui) - 1]
+#            if self.ui_index1%len(self.ui) - 1 == 0:
+#                self.ui = self._get_sub_rows(acc.parent)
+#            else:
+            self.ui = self._get_sub_rows(acc)
+            self.ui_index1 = 0
+            try:
+                action = acc.queryAction()
+                for i in range(action.nActions):
+                    if action.getName(i) == "click":
+                        action.doAction(i)
+                        break
+            except NotImplementedError:
+                pass
 
 # Defines convenience classes representing tree nodes and bag objects.
 #
@@ -439,7 +447,8 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     app = ScannerApp()
     app.get_ooowriter_rows()
-    print app.ui
-    for i in app.ui:
-        print len(i)
+    pyatspi.Registry.registerKeystrokeListener(app.on_key_down,
+                                               mask = None,
+                                               kind=(pyatspi.KEY_PRESSED_EVENT,))
+    
     gtk.main()

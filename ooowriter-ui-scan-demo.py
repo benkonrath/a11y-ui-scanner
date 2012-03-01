@@ -4,7 +4,6 @@ pygtk.require("2.0")
 import gtk
 import signal
 import gobject
-import highlighter
 import gtk.gdk
 import string
 import rsvg
@@ -38,7 +37,6 @@ class ScannerApp:
         self.timer_increment = 100
         self.max_delay = 4000
         self.min_delay = 200
-        self.timer_id = gobject.timeout_add(self.current_delay, self.highlight_next)
 
         self.ui_index1 = self.ui_index2 = 0
 
@@ -84,7 +82,7 @@ class ScannerApp:
         return row
 
     def _get_sub_rows(self, root):
-        row = [root]
+        row = []
         for i in range(root.childCount):
             rootItem = root.getChildAtIndex(i)
             roleName = rootItem.getRoleName()
@@ -136,7 +134,7 @@ class ScannerApp:
         gtk.main_quit()
         
     def on_key_down(self, event):
-        if event.event_string == "Control_R":
+        if event.event_string == "Shift_R":
             acc = self.ui[self.ui_index1%len(self.ui) - 1]
 #            if self.ui_index1%len(self.ui) - 1 == 0:
 #                self.ui = self._get_sub_rows(acc.parent)
@@ -450,5 +448,6 @@ if __name__ == '__main__':
     pyatspi.Registry.registerKeystrokeListener(app.on_key_down,
                                                mask = None,
                                                kind=(pyatspi.KEY_PRESSED_EVENT,))
+    app.timer_id = gobject.timeout_add(app.current_delay, app.highlight_next)
     
     gtk.main()
